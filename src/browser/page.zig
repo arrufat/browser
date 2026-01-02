@@ -48,6 +48,8 @@ const storage = @import("storage/storage.zig");
 
 const polyfill = @import("polyfill/polyfill.zig");
 
+const SemanticDistiller = @import("semantic.zig").SemanticDistiller;
+
 // Page navigates to an url.
 // You can navigates multiple urls with the same page, but you have to call
 // end() to stop the previous navigation before starting a new one.
@@ -261,6 +263,11 @@ pub const Page = struct {
             .page = opts.page,
             .strip_mode = opts.strip_mode,
         }, out);
+    }
+
+    pub fn semanticDump(self: *Page, out: anytype) !void {
+        var distiller = SemanticDistiller.init(self);
+        try distiller.write(out);
     }
 
     // addDOMTreeBase modifies the page's document to add a <base> tag after

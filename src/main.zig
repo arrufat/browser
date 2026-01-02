@@ -181,6 +181,13 @@ fn run(gpa: Allocator, arena: Allocator, sighandler: *SigHandler) !void {
                 }, &writer.interface);
                 try writer.interface.flush();
             }
+
+            if (opts.semantic) {
+                var stdout = std.fs.File.stdout();
+                var writer = stdout.writer(&.{});
+                try page.semanticDump(&writer.interface);
+                try writer.interface.flush();
+            }
         },
         else => unreachable,
     }
@@ -284,6 +291,7 @@ const Command = struct {
     const Fetch = struct {
         url: []const u8,
         dump: bool = false,
+        semantic: bool = false,
         common: Common,
         withbase: bool = false,
         strip_mode: DumpStripMode = .{},
@@ -368,6 +376,9 @@ const Command = struct {
             \\
             \\Options:
             \\--dump          Dumps document to stdout.
+            \\                Defaults to false.
+            \\
+            \\--semantic      Dumps distilled semantic tree for AI.
             \\                Defaults to false.
             \\
             \\--strip_mode    Comma separated list of tag groups to remove from dump
@@ -553,6 +564,7 @@ fn parseFetchArgs(
     args: *std.process.ArgIterator,
 ) !Command.Fetch {
     var dump: bool = false;
+    var semantic: bool = false;
     var withbase: bool = false;
     var url: ?[]const u8 = null;
     var common: Command.Common = .{};
@@ -570,6 +582,16 @@ fn parseFetchArgs(
                 .hint = "use '--strip_mode js' instead",
             });
             strip_mode.js = true;
+            continue;
+        }
+
+        if (std.mem.eql(u8, "--semantic", opt)) {
+            semantic = true;
+            continue;
+        }
+
+        if (std.mem.eql(u8, "--semantic", opt)) {
+            semantic = true;
             continue;
         }
 
@@ -628,6 +650,7 @@ fn parseFetchArgs(
     return .{
         .url = url.?,
         .dump = dump,
+        .semantic = semantic,
         .common = common,
         .withbase = withbase,
         .strip_mode = strip_mode,
