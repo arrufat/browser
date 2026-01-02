@@ -29,6 +29,8 @@ const DumpStripMode = @import("browser/dump.zig").Opts.StripMode;
 
 const build_config = @import("build_config");
 
+const Mcp = @import("browser/mcp.zig").Mcp;
+
 pub fn main() !void {
     // allocator
     // - in Debug mode we use the General Purpose Allocator to detect memory leaks
@@ -189,6 +191,15 @@ fn run(gpa: Allocator, arena: Allocator, sighandler: *SigHandler) !void {
                 try writer.interface.flush();
             }
         },
+        .mcp => |common| {
+            _ = common;
+            log.debug(.app, "startup", .{ .mode = "mcp" });
+            var browser = try Browser.init(app);
+            defer browser.deinit();
+
+            var mcp = Mcp.init(&browser, gpa);
+            try mcp.run();
+        },
         else => unreachable,
     }
 }
@@ -200,6 +211,7 @@ const Command = struct {
     fn tlsVerifyHost(self: *const Command) bool {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.tls_verify_host,
+            .mcp => |opts| opts.tls_verify_host,
             else => unreachable,
         };
     }
@@ -207,6 +219,7 @@ const Command = struct {
     fn httpProxy(self: *const Command) ?[:0]const u8 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.http_proxy,
+            .mcp => |opts| opts.http_proxy,
             else => unreachable,
         };
     }
@@ -214,6 +227,7 @@ const Command = struct {
     fn proxyBearerToken(self: *const Command) ?[:0]const u8 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.proxy_bearer_token,
+            .mcp => |opts| opts.proxy_bearer_token,
             else => unreachable,
         };
     }
@@ -221,6 +235,7 @@ const Command = struct {
     fn httpMaxConcurrent(self: *const Command) ?u8 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.http_max_concurrent,
+            .mcp => |opts| opts.http_max_concurrent,
             else => unreachable,
         };
     }
@@ -228,6 +243,7 @@ const Command = struct {
     fn httpMaxHostOpen(self: *const Command) ?u8 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.http_max_host_open,
+            .mcp => |opts| opts.http_max_host_open,
             else => unreachable,
         };
     }
@@ -235,6 +251,7 @@ const Command = struct {
     fn httpConnectTiemout(self: *const Command) ?u31 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.http_connect_timeout,
+            .mcp => |opts| opts.http_connect_timeout,
             else => unreachable,
         };
     }
@@ -242,6 +259,7 @@ const Command = struct {
     fn httpTimeout(self: *const Command) ?u31 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.http_timeout,
+            .mcp => |opts| opts.http_timeout,
             else => unreachable,
         };
     }
@@ -249,6 +267,7 @@ const Command = struct {
     fn logLevel(self: *const Command) ?log.Level {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.log_level,
+            .mcp => |opts| opts.log_level,
             else => unreachable,
         };
     }
@@ -256,6 +275,7 @@ const Command = struct {
     fn logFormat(self: *const Command) ?log.Format {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.log_format,
+            .mcp => |opts| opts.log_format,
             else => unreachable,
         };
     }
@@ -263,6 +283,7 @@ const Command = struct {
     fn logFilterScopes(self: *const Command) ?[]const log.Scope {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.log_filter_scopes,
+            .mcp => |opts| opts.log_filter_scopes,
             else => unreachable,
         };
     }
@@ -270,6 +291,7 @@ const Command = struct {
     fn userAgentSuffix(self: *const Command) ?[]const u8 {
         return switch (self.mode) {
             inline .serve, .fetch => |opts| opts.common.user_agent_suffix,
+            .mcp => |opts| opts.user_agent_suffix,
             else => unreachable,
         };
     }
@@ -278,6 +300,7 @@ const Command = struct {
         help: bool, // false when being printed because of an error
         fetch: Fetch,
         serve: Serve,
+        mcp: Common,
         version: void,
     };
 
@@ -366,13 +389,13 @@ const Command = struct {
 
         //                                                                     MAX_HELP_LEN|
         const usage =
-            \\usage: {s} command [options] [URL]
+            \\usage: {0s} command [options] [URL]
             \\
-            \\Command can be either 'fetch', 'serve' or 'help'
+            \\Command can be either 'fetch', 'serve', 'mcp' or 'help'
             \\
             \\fetch command
             \\Fetches the specified URL
-            \\Example: {s} fetch --dump https://lightpanda.io/
+            \\Example: {0s} fetch --dump https://lightpanda.io/
             \\
             \\Options:
             \\--dump          Dumps document to stdout.
@@ -390,11 +413,11 @@ const Command = struct {
             \\
             \\--with_base     Add a <base> tag in dump. Defaults to false.
             \\
-        ++ common_options ++
+            \\ {1s}
             \\
             \\serve command
             \\Starts a websocket CDP server
-            \\Example: {s} serve --host 127.0.0.1 --port 9222
+            \\Example: {0s} serve --host 127.0.0.1 --port 9222
             \\
             \\Options:
             \\--host          Host of the CDP server
@@ -406,16 +429,20 @@ const Command = struct {
             \\--timeout       Inactivity timeout in seconds before disconnecting clients
             \\                Defaults to 10 (seconds). Limited to 604800 (1 week).
             \\
-        ++ common_options ++
+            \\ {1s}
             \\
             \\version command
-            \\Displays the version of {s}
+            \\Displays the version of {0s}
             \\
             \\help command
             \\Displays this message
             \\
+            \\mcp command
+            \\Starts the BAMBU MCP server (JSON-RPC over stdio)
+            \\
+            \\ {1s}
         ;
-        std.debug.print(usage, .{ self.exec_name, self.exec_name, self.exec_name, self.exec_name });
+        std.debug.print(usage, .{ self.exec_name, common_options });
         if (success) {
             return std.process.cleanExit();
         }
@@ -453,6 +480,7 @@ fn parseArgs(allocator: Allocator) !Command {
         .help => .{ .help = true },
         .serve => .{ .serve = parseServeArgs(allocator, &args) catch return cmd },
         .fetch => .{ .fetch = parseFetchArgs(allocator, &args) catch return cmd },
+        .mcp => .{ .mcp = try parseMcpArgs(allocator, &args) },
         .version => .{ .version = {} },
     };
     return cmd;
@@ -496,6 +524,24 @@ fn inferMode(opt: []const u8) ?App.RunMode {
     }
 
     return null;
+}
+
+fn parseMcpArgs(
+    allocator: Allocator,
+    args: *std.process.ArgIterator,
+) !Command.Common {
+    var common: Command.Common = .{};
+
+    while (args.next()) |opt| {
+        if (try parseCommonArg(allocator, opt, args, &common)) {
+            continue;
+        }
+
+        log.fatal(.app, "unknown argument", .{ .mode = "mcp", .arg = opt });
+        return error.UnkownOption;
+    }
+
+    return common;
 }
 
 fn parseServeArgs(

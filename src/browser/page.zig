@@ -265,7 +265,7 @@ pub const Page = struct {
         }, out);
     }
 
-    pub fn semanticDump(self: *Page, out: anytype) !void {
+    pub fn semanticDump(self: *Page, out: *std.Io.Writer) !void {
         var distiller = SemanticDistiller.init(self);
         try distiller.write(out);
     }

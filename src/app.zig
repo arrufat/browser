@@ -25,6 +25,7 @@ pub const App = struct {
         help,
         fetch,
         serve,
+        mcp,
         version,
     };
 
