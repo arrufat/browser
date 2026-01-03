@@ -78,19 +78,23 @@ pub const SemanticDistiller = struct {
                     try writer.writeAll(" action=\"click\"");
                 }
 
-                try writer.writeAll(">\n");
+                const has_children = parser.nodeFirstChild(node) != null;
 
-                // Write children
-                if (parser.nodeFirstChild(node)) |first_child| {
-                    var child: ?*parser.Node = first_child;
+                if (has_children) {
+                    try writer.writeAll(">\n");
+
+                    // Write children
+                    var child: ?*parser.Node = parser.nodeFirstChild(node);
                     while (child) |n| {
                         try self.writeNode(n, writer, depth + 1);
                         child = parser.nodeNextSibling(n);
                     }
-                }
 
-                try indent(depth, writer);
-                try writer.print("</{s}>\n", .{tag_name});
+                    try indent(depth, writer);
+                    try writer.print("</{s}>\n", .{tag_name});
+                } else {
+                    try writer.print("></{s}>\n", .{tag_name});
+                }
             },
             .text => {
                 const v = parser.nodeValue(node) orelse return;
