@@ -22,6 +22,10 @@ const Walker = @import("dom/walker.zig").WalkerChildren;
 const Page = @import("page.zig").Page;
 const parser = @import("netsurf.zig");
 
+fn indent(depth: u32, writer: *std.Io.Writer) !void {
+    for (0..depth) |_| try writer.writeAll("  ");
+}
+
 pub const SemanticDistiller = struct {
     page: *Page,
     next_id: u32 = 0,
@@ -32,14 +36,16 @@ pub const SemanticDistiller = struct {
 
     pub fn write(self: *SemanticDistiller, writer: *std.Io.Writer) !void {
         const doc = parser.documentHTMLToDocument(self.page.window.document);
-        try self.writeNode(parser.documentToNode(doc), writer);
+        try self.writeNode(parser.documentToNode(doc), writer, 0);
     }
 
-    fn writeNode(self: *SemanticDistiller, node: *parser.Node, writer: *std.Io.Writer) anyerror!void {
+    fn writeNode(self: *SemanticDistiller, node: *parser.Node, writer: *std.Io.Writer, depth: u32) anyerror!void {
         switch (parser.nodeType(node)) {
             .document => {
-                if (parser.nodeFirstChild(node)) |child| {
-                    try self.writeNode(child, writer);
+                var child = parser.nodeFirstChild(node);
+                while (child) |n| {
+                    try self.writeNode(n, writer, depth);
+                    child = parser.nodeNextSibling(n);
                 }
             },
             .element => {
@@ -57,6 +63,7 @@ pub const SemanticDistiller = struct {
                 // Get bounding box
                 const rect = try self.page.renderer.getRect(@ptrCast(node));
 
+                try indent(depth, writer);
                 try writer.print("[{d}] <{s} loc=\"{d:.0},{d:.0},{d:.0},{d:.0}\"", .{
                     id,
                     tag_name,
@@ -71,24 +78,27 @@ pub const SemanticDistiller = struct {
                     try writer.writeAll(" action=\"click\"");
                 }
 
-                try writer.writeAll(">");
+                try writer.writeAll(">\n");
 
                 // Write children
                 if (parser.nodeFirstChild(node)) |first_child| {
                     var child: ?*parser.Node = first_child;
                     while (child) |n| {
-                        try self.writeNode(n, writer);
+                        try self.writeNode(n, writer, depth + 1);
                         child = parser.nodeNextSibling(n);
                     }
                 }
 
-                try writer.print("</{s}>", .{tag_name});
+                try indent(depth, writer);
+                try writer.print("</{s}>\n", .{tag_name});
             },
             .text => {
                 const v = parser.nodeValue(node) orelse return;
                 const trimmed = std.mem.trim(u8, v, &std.ascii.whitespace);
                 if (trimmed.len > 0) {
+                    try indent(depth, writer);
                     try writer.writeAll(trimmed);
+                    try writer.writeAll("\n");
                 }
             },
             else => {},
